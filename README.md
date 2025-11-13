@@ -10,12 +10,34 @@ MCP server để tìm kiếm và truy cập API từ các công ty chứng khoá
 
 ## Cài đặt
 
+### Cách 1: Clone từ GitHub (Khuyến nghị)
+
 ```bash
+# Clone repository
+git clone https://github.com/Long0308/vn-stock-api-mcp.git
+cd vn-stock-api-mcp
+
+# Cài đặt dependencies và build
 npm install
 npm run build
 ```
 
+### Cách 2: Sử dụng trực tiếp từ GitHub (đã có sẵn dist/)
+
+Nếu bạn chỉ muốn sử dụng mà không cần phát triển, bạn có thể clone và sử dụng trực tiếp:
+
+```bash
+# Clone repository
+git clone https://github.com/Long0308/vn-stock-api-mcp.git
+cd vn-stock-api-mcp
+
+# Chỉ cần cài đặt dependencies (dist/ đã có sẵn)
+npm install
+```
+
 ## Cấu hình trong mcp.json
+
+### Cấu hình với đường dẫn local (sau khi clone)
 
 ```json
 {
@@ -23,12 +45,29 @@ npm run build
     "vn-stock-api-mcp": {
       "command": "node",
       "args": [
-        "C:\\Users\\philong.pham\\vn-stock-api-mcp\\dist\\index.js"
+        "C:\\path\\to\\vn-stock-api-mcp\\dist\\index.js"
       ]
     }
   }
 }
 ```
+
+### Cấu hình với đường dẫn tương đối
+
+```json
+{
+  "mcpServers": {
+    "vn-stock-api-mcp": {
+      "command": "node",
+      "args": [
+        "~/vn-stock-api-mcp/dist/index.js"
+      ]
+    }
+  }
+}
+```
+
+**Lưu ý:** Thay `C:\\path\\to\\vn-stock-api-mcp` hoặc `~/vn-stock-api-mcp` bằng đường dẫn thực tế đến thư mục bạn đã clone.
 
 ## Tools có sẵn
 
