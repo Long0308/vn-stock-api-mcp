@@ -10,6 +10,7 @@ MCP server để tìm kiếm và truy cập API từ các công ty chứng khoá
 - **Lấy giá cổ phiếu real-time từ FireAnt** (get_stock_price_fireant)
 - **Liệt kê tất cả mã cổ phiếu Việt Nam** (list_vn_stocks) - tương tự list_assets trong coincap-mcp
 - **Lấy tin tức thị trường chứng khoán từ CafeF** (get_cafef_market_news) - sử dụng Firecrawl API để scrape tin tức
+- **Phân tích mô hình nến Doji** (analyze_doji_pattern) - phân tích kỹ thuật để phát hiện tín hiệu đảo chiều
 
 ## Cài đặt
 
@@ -260,6 +261,65 @@ Thêm `env` với `FIRECRAWL_API_KEY` vào cấu hình của `vn-stock-api-mcp`:
 - Thay `"your-firecrawl-api-key-here"` bằng API key thực tế của bạn từ firecrawl.dev
 - **KHÔNG** chia sẻ API key của bạn công khai
 - **KHÔNG** commit API key vào Git repository
+
+### 7. analyze_doji_pattern
+Phân tích mô hình nến Doji trong biểu đồ giá cổ phiếu. Mô hình Doji cho thấy sự không chắc chắn của thị trường và tiềm năng đảo chiều xu hướng. Tool này phát hiện các loại Doji khác nhau bao gồm Standard Doji, Long-legged Doji, Dragonfly Doji, Gravestone Doji, và Four Price Doji.
+
+**Parameters:**
+- `symbol` (required): Mã cổ phiếu cần phân tích (ví dụ: "VIC", "VNM", "VCB")
+- `period` (optional): Chu kỳ thời gian phân tích - "1D" (ngày), "1W" (tuần), "1M" (tháng). Mặc định: "1D"
+- `days` (optional): Số ngày để phân tích (mặc định: 30, tối đa: 100). Dùng để phát hiện mô hình Doji trong dữ liệu lịch sử
+- `threshold` (optional): Ngưỡng phát hiện Doji theo phần trăm của khoảng giá (mặc định: 0.1 = 0.1%). Giá trị thấp hơn sẽ phát hiện nhiều mô hình Doji hơn
+
+**Ví dụ sử dụng:**
+
+Phân tích Doji cho VIC (30 ngày gần nhất):
+```json
+{
+  "symbol": "VIC"
+}
+```
+
+Phân tích Doji với chu kỳ tuần:
+```json
+{
+  "symbol": "VIC",
+  "period": "1W",
+  "days": 60
+}
+```
+
+Phân tích với ngưỡng tùy chỉnh:
+```json
+{
+  "symbol": "VNM",
+  "threshold": 0.05,
+  "days": 50
+}
+```
+
+**Các loại mô hình Doji được phát hiện:**
+
+1. **Standard Doji**: Giá mở và giá đóng gần như bằng nhau với bóng nến ở cả hai phía
+   - Ý nghĩa: Thị trường không chắc chắn, có thể đảo chiều xu hướng
+
+2. **Long-legged Doji**: Thân nến nhỏ với bóng trên và bóng dưới rất dài
+   - Ý nghĩa: Biến động cao và không chắc chắn mạnh, tiềm năng đảo chiều
+
+3. **Dragonfly Doji**: Giá mở và giá đóng gần mức cao nhất, với bóng dưới dài
+   - Ý nghĩa: Tín hiệu tăng giá, đặc biệt sau xu hướng giảm
+
+4. **Gravestone Doji**: Giá mở và giá đóng gần mức thấp nhất, với bóng trên dài
+   - Ý nghĩa: Tín hiệu giảm giá, đặc biệt sau xu hướng tăng
+
+5. **Four Price Doji**: Giá mở = giá cao = giá thấp = giá đóng (rất hiếm)
+   - Ý nghĩa: Không chắc chắn cực mạnh, xuất hiện rất hiếm
+
+**Lưu ý:**
+- Tool cần dữ liệu OHLC (Open, High, Low, Close) từ FireAnt API hoặc nguồn khác
+- Nếu FireAnt API không khả dụng, tool sẽ cung cấp hướng dẫn sử dụng Firecrawl để scrape dữ liệu
+- Mô hình Doji chỉ cho thấy sự không chắc chắn của thị trường, nên kết hợp với các chỉ báo kỹ thuật khác để đưa ra quyết định đầu tư
+- Phân tích kỹ thuật không đảm bảo kết quả đầu tư, chỉ mang tính chất tham khảo
 
 ## Các nhà cung cấp được hỗ trợ
 

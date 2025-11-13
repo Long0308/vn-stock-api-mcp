@@ -176,6 +176,37 @@ class VNStockAPIServer {
           },
         },
       },
+      {
+        name: "analyze_doji_pattern",
+        description:
+          "Analyze Doji candlestick patterns in stock price charts. Doji patterns indicate market indecision and potential trend reversals. Detects various types of Doji patterns including Standard Doji, Long-legged Doji, Dragonfly Doji, Gravestone Doji, and Four Price Doji.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            symbol: {
+              type: "string",
+              description: "Stock symbol to analyze (e.g., 'VIC', 'VNM', 'VCB')",
+            },
+            period: {
+              type: "string",
+              enum: ["1D", "1W", "1M"],
+              description: "Time period for analysis: '1D' (daily), '1W' (weekly), '1M' (monthly). Default: '1D'",
+              default: "1D",
+            },
+            days: {
+              type: "number",
+              description: "Number of days to analyze (default: 30, max: 100). Used to detect Doji patterns in historical data.",
+              default: 30,
+            },
+            threshold: {
+              type: "number",
+              description: "Threshold for Doji detection as percentage of price range (default: 0.1 = 0.1%). Lower values detect more Doji patterns.",
+              default: 0.1,
+            },
+          },
+          required: ["symbol"],
+        },
+      },
     ];
   }
 
@@ -201,6 +232,8 @@ class VNStockAPIServer {
             return await this.listVNStocks(args as any);
           case "get_cafef_market_news":
             return await this.getCafefMarketNews(args as any);
+          case "analyze_doji_pattern":
+            return await this.analyzeDojiPattern(args as any);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -995,6 +1028,347 @@ class VNStockAPIServer {
     }
 
     return articles;
+  }
+
+  private async analyzeDojiPattern(args: {
+    symbol: string;
+    period?: "1D" | "1W" | "1M";
+    days?: number;
+    threshold?: number;
+  }) {
+    const { symbol, period = "1D", days = 30, threshold = 0.1 } = args;
+    const maxDays = Math.min(days, 100);
+    const symbolUpper = symbol.trim().toUpperCase();
+
+    try {
+      // Try to get OHLC data from FireAnt API
+      let candles: any[] = [];
+
+      try {
+        // FireAnt API endpoint for historical data
+        const apiUrl = `https://restv2.fireant.vn/symbols/${symbolUpper}/bars?resolution=${period}&from=${Date.now() - maxDays * 24 * 60 * 60 * 1000}&to=${Date.now()}`;
+        const response = await fetch(apiUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            Accept: "application/json",
+          },
+        });
+
+        if (response.ok) {
+          const data: any = await response.json();
+          candles = Array.isArray(data) ? data : data.data || data.bars || [];
+        }
+      } catch (error) {
+        // If API fails, provide guidance
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  symbol: symbolUpper,
+                  error: "Unable to fetch OHLC data from FireAnt API",
+                  note: "FireAnt API may require authentication. Please check FireAnt API documentation or use Firecrawl to scrape from https://www.fireant.vn",
+                  suggestion: "You can use Firecrawl MCP server to scrape historical price data from FireAnt website, then analyze Doji patterns manually.",
+                  dojiPatterns: this.getDojiPatternInfo(),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      if (candles.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  symbol: symbolUpper,
+                  error: "No price data available",
+                  note: "Unable to fetch historical price data. Please check if the symbol is correct or try using Firecrawl to scrape data.",
+                  dojiPatterns: this.getDojiPatternInfo(),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Analyze Doji patterns
+      const dojiPatterns = this.detectDojiPatterns(candles, threshold);
+      const analysis = this.analyzeDojiSignificance(dojiPatterns, candles);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                symbol: symbolUpper,
+                period: period,
+                analysisPeriod: `${maxDays} days`,
+                totalCandles: candles.length,
+                dojiPatternsFound: dojiPatterns.length,
+                patterns: dojiPatterns,
+                analysis: analysis,
+                interpretation: this.getDojiInterpretation(dojiPatterns),
+                note: "Doji patterns indicate market indecision. Always combine with other technical indicators for better trading decisions.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                error: error instanceof Error ? error.message : String(error),
+                symbol: symbolUpper,
+                note: "Unable to analyze Doji patterns. Please ensure you have access to price data.",
+                dojiPatterns: this.getDojiPatternInfo(),
+              },
+              null,
+              2
+            ),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  private detectDojiPatterns(candles: any[], threshold: number): any[] {
+    const dojiPatterns: any[] = [];
+
+    for (let i = 0; i < candles.length; i++) {
+      const candle = candles[i];
+      const open = parseFloat(candle.open || candle.o || 0);
+      const high = parseFloat(candle.high || candle.h || 0);
+      const low = parseFloat(candle.low || candle.l || 0);
+      const close = parseFloat(candle.close || candle.c || 0);
+      const timestamp = candle.timestamp || candle.time || candle.date || i;
+
+      if (open === 0 || high === 0 || low === 0 || close === 0) continue;
+
+      const bodySize = Math.abs(close - open);
+      const totalRange = high - low;
+      const upperShadow = high - Math.max(open, close);
+      const lowerShadow = Math.min(open, close) - low;
+
+      // Threshold for Doji detection (body should be very small compared to range)
+      const dojiThreshold = (totalRange * threshold) / 100;
+
+      if (bodySize <= dojiThreshold && totalRange > 0) {
+        const dojiType = this.classifyDojiType(
+          bodySize,
+          upperShadow,
+          lowerShadow,
+          totalRange
+        );
+
+        dojiPatterns.push({
+          index: i,
+          date: new Date(timestamp).toISOString(),
+          open: open,
+          high: high,
+          low: low,
+          close: close,
+          bodySize: bodySize,
+          totalRange: totalRange,
+          upperShadow: upperShadow,
+          lowerShadow: lowerShadow,
+          type: dojiType.type,
+          description: dojiType.description,
+          significance: dojiType.significance,
+        });
+      }
+    }
+
+    return dojiPatterns;
+  }
+
+  private classifyDojiType(
+    bodySize: number,
+    upperShadow: number,
+    lowerShadow: number,
+    totalRange: number
+  ): { type: string; description: string; significance: string } {
+    const bodyRatio = bodySize / totalRange;
+    const upperRatio = upperShadow / totalRange;
+    const lowerRatio = lowerShadow / totalRange;
+
+    // Four Price Doji: Open = High = Low = Close
+    if (bodySize === 0 && totalRange === 0) {
+      return {
+        type: "Four Price Doji",
+        description: "Extremely rare pattern where Open = High = Low = Close",
+        significance: "Very strong indecision, extremely rare occurrence",
+      };
+    }
+
+    // Standard Doji: Small body with shadows on both sides
+    if (bodyRatio < 0.1 && upperRatio > 0.2 && lowerRatio > 0.2) {
+      return {
+        type: "Standard Doji",
+        description: "Open and close are nearly equal with shadows on both sides",
+        significance: "Market indecision, potential trend reversal",
+      };
+    }
+
+    // Long-legged Doji: Small body with very long shadows
+    if (
+      bodyRatio < 0.1 &&
+      upperRatio > 0.3 &&
+      lowerRatio > 0.3 &&
+      totalRange > 0
+    ) {
+      return {
+        type: "Long-legged Doji",
+        description: "Small body with very long upper and lower shadows",
+        significance: "High volatility and strong indecision, potential reversal",
+      };
+    }
+
+    // Dragonfly Doji: Small body at top, long lower shadow
+    if (
+      bodyRatio < 0.1 &&
+      lowerRatio > 0.6 &&
+      upperRatio < 0.1 &&
+      totalRange > 0
+    ) {
+      return {
+        type: "Dragonfly Doji",
+        description: "Open and close near the high, with long lower shadow",
+        significance: "Bullish reversal signal, especially after downtrend",
+      };
+    }
+
+    // Gravestone Doji: Small body at bottom, long upper shadow
+    if (
+      bodyRatio < 0.1 &&
+      upperRatio > 0.6 &&
+      lowerRatio < 0.1 &&
+      totalRange > 0
+    ) {
+      return {
+        type: "Gravestone Doji",
+        description: "Open and close near the low, with long upper shadow",
+        significance: "Bearish reversal signal, especially after uptrend",
+      };
+    }
+
+    // Generic Doji
+    return {
+      type: "Doji",
+      description: "Open and close are nearly equal",
+      significance: "Market indecision, watch for confirmation",
+    };
+  }
+
+  private analyzeDojiSignificance(dojiPatterns: any[], candles: any[]): any {
+    if (dojiPatterns.length === 0) {
+      return {
+        message: "No Doji patterns detected in the analyzed period",
+        recommendation: "Continue monitoring for Doji patterns",
+      };
+    }
+
+    const patternTypes = dojiPatterns.reduce((acc: any, pattern: any) => {
+      acc[pattern.type] = (acc[pattern.type] || 0) + 1;
+      return acc;
+    }, {});
+
+    const recentDoji = dojiPatterns[dojiPatterns.length - 1];
+    const isRecent = recentDoji.index >= candles.length - 5;
+
+    return {
+      totalPatterns: dojiPatterns.length,
+      patternBreakdown: patternTypes,
+      recentPattern: isRecent ? recentDoji : null,
+      frequency: `${((dojiPatterns.length / candles.length) * 100).toFixed(2)}%`,
+      interpretation: this.getDojiInterpretation(dojiPatterns),
+    };
+  }
+
+  private getDojiInterpretation(dojiPatterns: any[]): string {
+    if (dojiPatterns.length === 0) {
+      return "Không phát hiện mô hình Doji trong khoảng thời gian phân tích.";
+    }
+
+    const dragonflyCount = dojiPatterns.filter(
+      (p) => p.type === "Dragonfly Doji"
+    ).length;
+    const gravestoneCount = dojiPatterns.filter(
+      (p) => p.type === "Gravestone Doji"
+    ).length;
+    const longLeggedCount = dojiPatterns.filter(
+      (p) => p.type === "Long-legged Doji"
+    ).length;
+
+    let interpretation = `Phát hiện ${dojiPatterns.length} mô hình Doji. `;
+
+    if (dragonflyCount > 0) {
+      interpretation += `Có ${dragonflyCount} Dragonfly Doji (tín hiệu tăng giá tiềm năng). `;
+    }
+
+    if (gravestoneCount > 0) {
+      interpretation += `Có ${gravestoneCount} Gravestone Doji (tín hiệu giảm giá tiềm năng). `;
+    }
+
+    if (longLeggedCount > 0) {
+      interpretation += `Có ${longLeggedCount} Long-legged Doji (biến động cao, không chắc chắn). `;
+    }
+
+    interpretation +=
+      "Lưu ý: Doji chỉ cho thấy sự không chắc chắn của thị trường. Nên kết hợp với các chỉ báo kỹ thuật khác để đưa ra quyết định đầu tư.";
+
+    return interpretation;
+  }
+
+  private getDojiPatternInfo(): any {
+    return {
+      patterns: [
+        {
+          name: "Standard Doji",
+          description: "Giá mở và giá đóng gần như bằng nhau với bóng nến ở cả hai phía",
+          significance: "Thị trường không chắc chắn, có thể đảo chiều xu hướng",
+        },
+        {
+          name: "Long-legged Doji",
+          description: "Thân nến nhỏ với bóng trên và bóng dưới rất dài",
+          significance: "Biến động cao và không chắc chắn mạnh, tiềm năng đảo chiều",
+        },
+        {
+          name: "Dragonfly Doji",
+          description: "Giá mở và giá đóng gần mức cao nhất, với bóng dưới dài",
+          significance: "Tín hiệu tăng giá, đặc biệt sau xu hướng giảm",
+        },
+        {
+          name: "Gravestone Doji",
+          description: "Giá mở và giá đóng gần mức thấp nhất, với bóng trên dài",
+          significance: "Tín hiệu giảm giá, đặc biệt sau xu hướng tăng",
+        },
+        {
+          name: "Four Price Doji",
+          description: "Giá mở = giá cao = giá thấp = giá đóng (rất hiếm)",
+          significance: "Không chắc chắn cực mạnh, xuất hiện rất hiếm",
+        },
+      ],
+      usage: "Sử dụng tool analyze_doji_pattern với symbol cổ phiếu để phân tích",
+    };
   }
 
   private getEndpointsForProvider(
