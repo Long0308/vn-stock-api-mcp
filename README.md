@@ -7,6 +7,7 @@ MCP server để tìm kiếm và truy cập API từ các công ty chứng khoá
 - Tìm kiếm API documentation từ VNDirect, FireAnt, và SSI
 - Lấy thông tin về API endpoints
 - Truy cập documentation URLs
+- **Lấy giá cổ phiếu real-time từ FireAnt** (get_stock_price_fireant)
 
 ## Cài đặt
 
@@ -90,6 +91,31 @@ Lấy URLs của API documentation.
 
 **Parameters:**
 - `provider`: "vndirect" | "fireant" | "ssi" | "all"
+
+### 4. get_stock_price_fireant
+Lấy giá cổ phiếu real-time từ FireAnt API. Hỗ trợ lấy giá cho một hoặc nhiều mã cổ phiếu cùng lúc.
+
+**Parameters:**
+- `symbol`: Mã cổ phiếu (ví dụ: "VIC", "VNM", "VCB"). Có thể truyền nhiều mã cách nhau bằng dấu phẩy (ví dụ: "VIC,VNM,VCB")
+
+**Ví dụ sử dụng:**
+```json
+{
+  "symbol": "VIC"
+}
+```
+
+hoặc nhiều mã:
+
+```json
+{
+  "symbol": "VIC,VNM,VCB"
+}
+```
+
+**Lưu ý:** 
+- FireAnt API có thể yêu cầu authentication. Nếu API không hoạt động, tool sẽ cung cấp URL web để truy cập thông tin trên FireAnt website.
+- Để lấy dữ liệu real-time tốt hơn, có thể sử dụng kết hợp với Firecrawl MCP server để scrape từ website FireAnt.
 
 ## Các nhà cung cấp được hỗ trợ
 
