@@ -9,6 +9,7 @@ MCP server để tìm kiếm và truy cập API từ các công ty chứng khoá
 - Truy cập documentation URLs
 - **Lấy giá cổ phiếu real-time từ FireAnt** (get_stock_price_fireant)
 - **Liệt kê tất cả mã cổ phiếu Việt Nam** (list_vn_stocks) - tương tự list_assets trong coincap-mcp
+- **Lấy tin tức thị trường chứng khoán từ CafeF** (get_cafef_market_news) - sử dụng Firecrawl API để scrape tin tức
 
 ## Cài đặt
 
@@ -158,6 +159,67 @@ Kết hợp filter và search:
 - Tool sẽ cố gắng lấy danh sách từ FireAnt API trước, nếu không thành công sẽ sử dụng danh sách tĩnh các mã cổ phiếu phổ biến.
 - Danh sách bao gồm các mã cổ phiếu lớn và phổ biến trên thị trường Việt Nam.
 - Để lấy thông tin chi tiết và giá real-time, sử dụng `get_stock_price_fireant` với mã cổ phiếu cụ thể.
+
+### 6. get_cafef_market_news
+Lấy tin tức thị trường chứng khoán mới nhất từ CafeF (cafef.vn). Tool này sử dụng Firecrawl API để scrape và trả về tin tức, phân tích, và cập nhật thị trường từ trang tin tài chính hàng đầu Việt Nam.
+
+**Parameters:**
+- `limit` (optional): Số lượng bài viết tối đa cần trả về (mặc định: 20, tối đa: 100)
+- `search` (optional): Từ khóa tìm kiếm để lọc tin tức (ví dụ: "VIC", "VN-Index", "ngân hàng")
+- `format` (optional): Định dạng đầu ra - "markdown" (văn bản có định dạng), "json" (dữ liệu có cấu trúc), hoặc "text" (văn bản thuần). Mặc định: "markdown"
+
+**Ví dụ sử dụng:**
+
+Lấy 20 tin tức mới nhất:
+```json
+{}
+```
+
+Lấy 10 tin tức về VIC:
+```json
+{
+  "limit": 10,
+  "search": "VIC"
+}
+```
+
+Lấy tin tức dạng JSON:
+```json
+{
+  "limit": 20,
+  "format": "json"
+}
+```
+
+Tìm kiếm tin tức về ngân hàng:
+```json
+{
+  "search": "ngân hàng",
+  "limit": 15
+}
+```
+
+**Lưu ý:**
+- Tool sử dụng Firecrawl API để scrape dữ liệu từ [cafef.vn](https://cafef.vn/thi-truong-chung-khoan.chn).
+- Để sử dụng Firecrawl API, cần set environment variable `FIRECRAWL_API_KEY` trong mcp.json hoặc system environment.
+- Nếu không có Firecrawl API key, tool sẽ sử dụng phương pháp fallback với HTML parsing cơ bản.
+- Để có kết quả tốt nhất, nên sử dụng Firecrawl API key từ [firecrawl.dev](https://firecrawl.dev).
+
+**Cấu hình Firecrawl API Key trong mcp.json:**
+
+```json
+{
+  "mcpServers": {
+    "vn-stock-api-mcp": {
+      "command": "node",
+      "args": ["C:\\path\\to\\vn-stock-api-mcp\\dist\\index.js"],
+      "env": {
+        "FIRECRAWL_API_KEY": "your-firecrawl-api-key-here"
+      }
+    }
+  }
+}
+```
 
 ## Các nhà cung cấp được hỗ trợ
 

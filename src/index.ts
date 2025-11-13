@@ -151,6 +151,31 @@ class VNStockAPIServer {
           },
         },
       },
+      {
+        name: "get_cafef_market_news",
+        description:
+          "Get latest stock market news from CafeF (cafef.vn). Scrapes and returns comprehensive market news, analysis, and updates from Vietnam's leading financial news website. Uses Firecrawl API for reliable web scraping.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "number",
+              description: "Maximum number of news articles to return (default: 20, max: 100)",
+              default: 20,
+            },
+            search: {
+              type: "string",
+              description: "Optional search query to filter news by keywords (e.g., 'VIC', 'VN-Index', 'ngân hàng')",
+            },
+            format: {
+              type: "string",
+              enum: ["markdown", "json", "text"],
+              description: "Output format: 'markdown' (formatted text), 'json' (structured data), or 'text' (plain text). Default: 'markdown'",
+              default: "markdown",
+            },
+          },
+        },
+      },
     ];
   }
 
@@ -174,6 +199,8 @@ class VNStockAPIServer {
             return await this.getStockPriceFireAnt(args as any);
           case "list_vn_stocks":
             return await this.listVNStocks(args as any);
+          case "get_cafef_market_news":
+            return await this.getCafefMarketNews(args as any);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -690,6 +717,284 @@ class VNStockAPIServer {
   private isUPCOMStock(symbol: string): boolean {
     // UPCOM stocks can have 3-5 characters
     return symbol.length >= 3 && symbol.length <= 5 && /^[A-Z0-9]+$/.test(symbol);
+  }
+
+  private async getCafefMarketNews(args: {
+    limit?: number;
+    search?: string;
+    format?: "markdown" | "json" | "text";
+  }) {
+    const { limit = 20, search, format = "markdown" } = args;
+    const maxLimit = Math.min(limit, 100);
+
+    try {
+      // Use Firecrawl API to scrape cafef.vn
+      const firecrawlApiKey = process.env.FIRECRAWL_API_KEY || "";
+      const cafefUrl = "https://cafef.vn/thi-truong-chung-khoan.chn";
+
+      if (!firecrawlApiKey) {
+        // Fallback: Use direct fetch if Firecrawl API key is not available
+        return await this.getCafefNewsFallback(cafefUrl, maxLimit, search, format);
+      }
+
+      // Use Firecrawl API
+      const firecrawlUrl = "https://api.firecrawl.dev/v1/scrape";
+      const response = await fetch(firecrawlUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${firecrawlApiKey}`,
+        },
+        body: JSON.stringify({
+          url: cafefUrl,
+          formats: ["markdown"],
+          onlyMainContent: true,
+        }),
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        const markdown = data.data?.markdown || data.markdown || "";
+
+        // Parse markdown to extract news articles
+        const newsArticles = this.parseCafefMarkdown(markdown, maxLimit, search);
+
+        if (format === "json") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    source: "CafeF (cafef.vn)",
+                    url: cafefUrl,
+                    total: newsArticles.length,
+                    articles: newsArticles,
+                    timestamp: new Date().toISOString(),
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } else {
+          // Format as markdown or text
+          const formattedNews = newsArticles
+            .map((article: any, index: number) => {
+              if (format === "markdown") {
+                return `## ${index + 1}. ${article.title}\n\n**Ngày:** ${article.date}\n\n**Mô tả:** ${article.description}\n\n**Link:** ${article.url}\n\n---\n`;
+              } else {
+                return `${index + 1}. ${article.title}\nNgày: ${article.date}\n${article.description}\nLink: ${article.url}\n\n`;
+              }
+            })
+            .join("\n");
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: format === "markdown"
+                  ? `# Tin tức thị trường chứng khoán từ CafeF\n\n${formattedNews}`
+                  : formattedNews,
+              },
+            ],
+          };
+        }
+      } else {
+        // Fallback if Firecrawl API fails
+        return await this.getCafefNewsFallback(cafefUrl, maxLimit, search, format);
+      }
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                error: error instanceof Error ? error.message : String(error),
+                note: "Unable to fetch news from CafeF. Please ensure FIRECRAWL_API_KEY is set in environment variables, or use Firecrawl MCP server directly.",
+                fallback: "You can use Firecrawl MCP server to scrape https://cafef.vn/thi-truong-chung-khoan.chn directly.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  private async getCafefNewsFallback(
+    url: string,
+    limit: number,
+    search?: string,
+    format: "markdown" | "json" | "text" = "markdown"
+  ) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "text/html,application/xhtml+xml",
+        },
+      });
+
+      if (response.ok) {
+        const html = await response.text();
+        // Simple HTML parsing to extract news (basic implementation)
+        const newsArticles = this.parseCafefHTML(html, limit, search);
+
+        if (format === "json") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    source: "CafeF (cafef.vn)",
+                    url: url,
+                    total: newsArticles.length,
+                    articles: newsArticles,
+                    timestamp: new Date().toISOString(),
+                    note: "Data extracted using basic HTML parsing. For better results, use Firecrawl API with FIRECRAWL_API_KEY.",
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } else {
+          const formattedNews = newsArticles
+            .map((article: any, index: number) => {
+              if (format === "markdown") {
+                return `## ${index + 1}. ${article.title}\n\n**Ngày:** ${article.date}\n\n**Mô tả:** ${article.description}\n\n**Link:** ${article.url}\n\n---\n`;
+              } else {
+                return `${index + 1}. ${article.title}\nNgày: ${article.date}\n${article.description}\nLink: ${article.url}\n\n`;
+              }
+            })
+            .join("\n");
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: format === "markdown"
+                  ? `# Tin tức thị trường chứng khoán từ CafeF\n\n${formattedNews}`
+                  : formattedNews,
+              },
+            ],
+          };
+        }
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  private parseCafefMarkdown(
+    markdown: string,
+    limit: number,
+    search?: string
+  ): any[] {
+    const articles: any[] = [];
+    const lines = markdown.split("\n");
+
+    let currentArticle: any = null;
+
+    for (let i = 0; i < lines.length && articles.length < limit; i++) {
+      const line = lines[i].trim();
+
+      // Match article titles (usually start with ## or ###)
+      if (line.match(/^###?\s+\[(.+)\]\((.+)\)/)) {
+        const match = line.match(/^###?\s+\[(.+)\]\((.+)\)/);
+        if (match) {
+          if (currentArticle) {
+            articles.push(currentArticle);
+          }
+          currentArticle = {
+            title: match[1],
+            url: match[2],
+            date: "",
+            description: "",
+          };
+        }
+      }
+      // Match dates (format: DD/MM/YYYY - HH:MM)
+      else if (line.match(/\d{2}\/\d{2}\/\d{4}\s*-\s*\d{2}:\d{2}/)) {
+        if (currentArticle) {
+          currentArticle.date = line;
+        }
+      }
+      // Match descriptions (text after date)
+      else if (currentArticle && line && !line.startsWith("#") && !line.startsWith("![")) {
+        if (!currentArticle.description) {
+          currentArticle.description = line;
+        } else {
+          currentArticle.description += " " + line;
+        }
+      }
+    }
+
+    if (currentArticle) {
+      articles.push(currentArticle);
+    }
+
+    // Filter by search query if provided
+    let filteredArticles = articles;
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      filteredArticles = articles.filter(
+        (article) =>
+          article.title.toLowerCase().includes(lowerSearch) ||
+          article.description.toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    return filteredArticles.slice(0, limit);
+  }
+
+  private parseCafefHTML(html: string, limit: number, search?: string): any[] {
+    // Basic HTML parsing - extract article links and titles
+    const articles: any[] = [];
+    const titleRegex = /<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+    const dateRegex = /(\d{2}\/\d{2}\/\d{4}\s*-\s*\d{2}:\d{2})/g;
+
+    let match;
+    const titles: Array<{ url: string; title: string }> = [];
+
+    while ((match = titleRegex.exec(html)) !== null && titles.length < limit * 2) {
+      const url = match[1].startsWith("http") ? match[1] : `https://cafef.vn${match[1]}`;
+      const title = match[2].trim();
+      if (title && url.includes("cafef.vn")) {
+        titles.push({ url, title });
+      }
+    }
+
+    // Extract dates
+    const dates: string[] = [];
+    while ((match = dateRegex.exec(html)) !== null && dates.length < limit * 2) {
+      dates.push(match[1]);
+    }
+
+    // Combine titles and dates
+    for (let i = 0; i < Math.min(titles.length, dates.length, limit); i++) {
+      const article = {
+        title: titles[i].title,
+        url: titles[i].url,
+        date: dates[i] || "N/A",
+        description: "",
+      };
+
+      if (!search || article.title.toLowerCase().includes(search.toLowerCase())) {
+        articles.push(article);
+      }
+    }
+
+    return articles;
   }
 
   private getEndpointsForProvider(
