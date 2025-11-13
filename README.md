@@ -8,6 +8,7 @@ MCP server để tìm kiếm và truy cập API từ các công ty chứng khoá
 - Lấy thông tin về API endpoints
 - Truy cập documentation URLs
 - **Lấy giá cổ phiếu real-time từ FireAnt** (get_stock_price_fireant)
+- **Liệt kê tất cả mã cổ phiếu Việt Nam** (list_vn_stocks) - tương tự list_assets trong coincap-mcp
 
 ## Cài đặt
 
@@ -116,6 +117,47 @@ hoặc nhiều mã:
 **Lưu ý:** 
 - FireAnt API có thể yêu cầu authentication. Nếu API không hoạt động, tool sẽ cung cấp URL web để truy cập thông tin trên FireAnt website.
 - Để lấy dữ liệu real-time tốt hơn, có thể sử dụng kết hợp với Firecrawl MCP server để scrape từ website FireAnt.
+
+### 5. list_vn_stocks
+Liệt kê tất cả các mã cổ phiếu Việt Nam có sẵn. Tương tự như `list_assets` trong coincap-mcp, tool này trả về danh sách đầy đủ các mã cổ phiếu được giao dịch trên các sàn chứng khoán Việt Nam (HOSE, HNX, UPCOM).
+
+**Parameters:**
+- `exchange` (optional): Lọc theo sàn giao dịch - "HOSE" (Sàn Hồ Chí Minh), "HNX" (Sàn Hà Nội), "UPCOM" (Thị trường UPCOM), hoặc "all" để lấy tất cả (mặc định: "all")
+- `search` (optional): Từ khóa tìm kiếm để lọc theo mã cổ phiếu hoặc tên công ty
+
+**Ví dụ sử dụng:**
+
+Liệt kê tất cả mã cổ phiếu:
+```json
+{}
+```
+
+Lọc theo sàn HOSE:
+```json
+{
+  "exchange": "HOSE"
+}
+```
+
+Tìm kiếm mã cổ phiếu:
+```json
+{
+  "search": "VIC"
+}
+```
+
+Kết hợp filter và search:
+```json
+{
+  "exchange": "HOSE",
+  "search": "bank"
+}
+```
+
+**Lưu ý:**
+- Tool sẽ cố gắng lấy danh sách từ FireAnt API trước, nếu không thành công sẽ sử dụng danh sách tĩnh các mã cổ phiếu phổ biến.
+- Danh sách bao gồm các mã cổ phiếu lớn và phổ biến trên thị trường Việt Nam.
+- Để lấy thông tin chi tiết và giá real-time, sử dụng `get_stock_price_fireant` với mã cổ phiếu cụ thể.
 
 ## Các nhà cung cấp được hỗ trợ
 

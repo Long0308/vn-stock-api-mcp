@@ -132,6 +132,25 @@ class VNStockAPIServer {
           required: ["symbol"],
         },
       },
+      {
+        name: "list_vn_stocks",
+        description:
+          "List all available Vietnam stock symbols. Returns a comprehensive list of stock symbols traded on Vietnamese stock exchanges (HOSE, HNX, UPCOM). Similar to list_assets in coincap-mcp.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            exchange: {
+              type: "string",
+              enum: ["HOSE", "HNX", "UPCOM", "all"],
+              description: "Filter by exchange: HOSE (Ho Chi Minh Stock Exchange), HNX (Hanoi Stock Exchange), UPCOM (Unlisted Public Company Market), or 'all' for all exchanges.",
+            },
+            search: {
+              type: "string",
+              description: "Optional search query to filter stocks by symbol or company name.",
+            },
+          },
+        },
+      },
     ];
   }
 
@@ -153,6 +172,8 @@ class VNStockAPIServer {
             return await this.getAPIDocumentationURLs(args as any);
           case "get_stock_price_fireant":
             return await this.getStockPriceFireAnt(args as any);
+          case "list_vn_stocks":
+            return await this.listVNStocks(args as any);
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -392,6 +413,283 @@ class VNStockAPIServer {
         isError: true,
       };
     }
+  }
+
+  private async listVNStocks(args: {
+    exchange?: "HOSE" | "HNX" | "UPCOM" | "all";
+    search?: string;
+  }) {
+    const { exchange = "all", search } = args;
+
+    try {
+      // Try to get list from FireAnt API
+      let stocks: any[] = [];
+
+      try {
+        // FireAnt API endpoint for listing stocks
+        const apiUrl = "https://restv2.fireant.vn/symbols";
+        const response = await fetch(apiUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+          },
+        });
+
+        if (response.ok) {
+          const data: any = await response.json();
+          stocks = Array.isArray(data) ? data : data.data || data.symbols || [];
+        }
+      } catch (error) {
+        // If API fails, use a comprehensive static list of popular Vietnamese stocks
+        stocks = this.getPopularVNStocks();
+      }
+
+      // If API returned empty or failed, use static list
+      if (stocks.length === 0) {
+        stocks = this.getPopularVNStocks();
+      }
+
+      // Filter by exchange if specified
+      let filteredStocks = stocks;
+      if (exchange !== "all") {
+        filteredStocks = stocks.filter(
+          (stock: any) =>
+            stock.exchange?.toUpperCase() === exchange ||
+            stock.market?.toUpperCase() === exchange ||
+            (exchange === "HOSE" && this.isHOSEStock(stock.symbol || stock.code)) ||
+            (exchange === "HNX" && this.isHNXStock(stock.symbol || stock.code)) ||
+            (exchange === "UPCOM" && this.isUPCOMStock(stock.symbol || stock.code))
+        );
+      }
+
+      // Filter by search query if provided
+      if (search) {
+        const lowerSearch = search.toLowerCase();
+        filteredStocks = filteredStocks.filter(
+          (stock: any) =>
+            (stock.symbol || stock.code || "").toLowerCase().includes(lowerSearch) ||
+            (stock.name || stock.companyName || "").toLowerCase().includes(lowerSearch) ||
+            (stock.companyNameEn || "").toLowerCase().includes(lowerSearch)
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                exchange: exchange,
+                total: filteredStocks.length,
+                stocks: filteredStocks,
+                note: "This list includes major Vietnamese stocks. For complete real-time data, use get_stock_price_fireant with specific symbols.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                error: error instanceof Error ? error.message : String(error),
+                stocks: this.getPopularVNStocks(),
+                note: "Using fallback static list of popular Vietnamese stocks.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  private getPopularVNStocks(): any[] {
+    // Comprehensive list of popular Vietnamese stocks
+    return [
+      // HOSE - Ho Chi Minh Stock Exchange (Large cap)
+      { symbol: "VIC", name: "Vingroup", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VNM", name: "Vinamilk", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VCB", name: "Vietcombank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VRE", name: "Vincom Retail", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VHM", name: "Vinhomes", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HPG", name: "Hoa Phat Group", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MSN", name: "Masan Group", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VJC", name: "VietJet Air", exchange: "HOSE", market: "HOSE" },
+      { symbol: "FPT", name: "FPT Corporation", exchange: "HOSE", market: "HOSE" },
+      { symbol: "TCB", name: "Techcombank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "CTG", name: "VietinBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BID", name: "BIDV", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MWG", name: "Mobile World", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SSI", name: "SSI Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VSH", name: "Vinhomes", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PLX", name: "Petrolimex", exchange: "HOSE", market: "HOSE" },
+      { symbol: "GAS", name: "PetroVietnam Gas", exchange: "HOSE", market: "HOSE" },
+      { symbol: "POW", name: "PetroVietnam Power", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BVH", name: "Bao Viet Holdings", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MBB", name: "MB Bank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "ACB", name: "ACB Bank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "TPB", name: "TPBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "STB", name: "Sacombank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VPB", name: "VPBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "EIB", name: "Eximbank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HDB", name: "HDBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SHB", name: "SHB", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VCI", name: "Viet Capital Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VND", name: "VNDirect Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BSI", name: "BIDV Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VIX", name: "VIX Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SHS", name: "Saigon-Hanoi Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VRE", name: "Vincom Retail", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MWG", name: "Mobile World", exchange: "HOSE", market: "HOSE" },
+      { symbol: "FRT", name: "FPT Retail", exchange: "HOSE", market: "HOSE" },
+      { symbol: "DGW", name: "Digiworld", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PNJ", name: "Phu Nhuan Jewelry", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MSH", name: "Masan Consumer", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VGC", name: "Viglacera", exchange: "HOSE", market: "HOSE" },
+      { symbol: "DXG", name: "Dat Xanh Group", exchange: "HOSE", market: "HOSE" },
+      { symbol: "NVL", name: "Novaland", exchange: "HOSE", market: "HOSE" },
+      { symbol: "KDH", name: "Khang Dien House", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HDG", name: "Hoa Binh Group", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BCM", name: "Becamex", exchange: "HOSE", market: "HOSE" },
+      { symbol: "DXS", name: "Dat Xanh Services", exchange: "HOSE", market: "HOSE" },
+      { symbol: "QCG", name: "Quoc Cuong Gia Lai", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VHC", name: "Vinh Hoan", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VTO", name: "Viettel Post", exchange: "HOSE", market: "HOSE" },
+      { symbol: "GMD", name: "Gemadept", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VSC", name: "Vietnam Container", exchange: "HOSE", market: "HOSE" },
+      { symbol: "GSP", name: "Gemadept Port", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VOS", name: "Vietnam Oil and Gas", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PVS", name: "PetroVietnam Services", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PVB", name: "PetroVietnam Insurance", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BSR", name: "Binh Son Refining", exchange: "HOSE", market: "HOSE" },
+      { symbol: "OIL", name: "PV Oil", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PVT", name: "PetroVietnam Transportation", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PVD", name: "PV Drilling", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PVG", name: "PetroVietnam Gas", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HSG", name: "Hoa Sen Group", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HPX", name: "Hoa Phat Xanh", exchange: "HOSE", market: "HOSE" },
+      { symbol: "NKG", name: "Nam Kim Steel", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SMC", name: "SMC Trading", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VGS", name: "Vietnam Gas", exchange: "HOSE", market: "HOSE" },
+      { symbol: "GEX", name: "Gelex", exchange: "HOSE", market: "HOSE" },
+      { symbol: "REE", name: "REE Corporation", exchange: "HOSE", market: "HOSE" },
+      { symbol: "DRC", name: "Danang Rubber", exchange: "HOSE", market: "HOSE" },
+      { symbol: "CSM", name: "Cao Su May", exchange: "HOSE", market: "HOSE" },
+      { symbol: "DCM", name: "Dong Nai Rubber", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SRC", name: "Saigon Rubber", exchange: "HOSE", market: "HOSE" },
+      { symbol: "DPM", name: "PetroVietnam Fertilizer", exchange: "HOSE", market: "HOSE" },
+      { symbol: "LAS", name: "Lao Cai", exchange: "HOSE", market: "HOSE" },
+      { symbol: "LIX", name: "Licogi", exchange: "HOSE", market: "HOSE" },
+      { symbol: "ROS", name: "FLC Faros", exchange: "HOSE", market: "HOSE" },
+      { symbol: "FLC", name: "FLC Group", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HBC", name: "Hoa Binh Construction", exchange: "HOSE", market: "HOSE" },
+      { symbol: "CTD", name: "Coteccons", exchange: "HOSE", market: "HOSE" },
+      { symbol: "LCG", name: "Lizen", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HNG", name: "Hoang Anh Gia Lai", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VGC", name: "Viglacera", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VCS", name: "Vietnam Container", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VRE", name: "Vincom Retail", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VHM", name: "Vinhomes", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VIC", name: "Vingroup", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VNM", name: "Vinamilk", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VCB", name: "Vietcombank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VJC", name: "VietJet Air", exchange: "HOSE", market: "HOSE" },
+      { symbol: "FPT", name: "FPT Corporation", exchange: "HOSE", market: "HOSE" },
+      { symbol: "TCB", name: "Techcombank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "CTG", name: "VietinBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BID", name: "BIDV", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MWG", name: "Mobile World", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SSI", name: "SSI Securities", exchange: "HOSE", market: "HOSE" },
+      { symbol: "PLX", name: "Petrolimex", exchange: "HOSE", market: "HOSE" },
+      { symbol: "GAS", name: "PetroVietnam Gas", exchange: "HOSE", market: "HOSE" },
+      { symbol: "POW", name: "PetroVietnam Power", exchange: "HOSE", market: "HOSE" },
+      { symbol: "BVH", name: "Bao Viet Holdings", exchange: "HOSE", market: "HOSE" },
+      { symbol: "MBB", name: "MB Bank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "ACB", name: "ACB Bank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "TPB", name: "TPBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "STB", name: "Sacombank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "VPB", name: "VPBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "EIB", name: "Eximbank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "HDB", name: "HDBank", exchange: "HOSE", market: "HOSE" },
+      { symbol: "SHB", name: "SHB", exchange: "HOSE", market: "HOSE" },
+      // HNX - Hanoi Stock Exchange
+      { symbol: "VCG", name: "Viettel Construction", exchange: "HNX", market: "HNX" },
+      { symbol: "VCS", name: "Vietnam Container", exchange: "HNX", market: "HNX" },
+      { symbol: "VND", name: "VNDirect Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "BSI", name: "BIDV Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VIX", name: "VIX Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "SHS", name: "Saigon-Hanoi Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VCI", name: "Viet Capital Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "CTS", name: "VietinBank Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "HCM", name: "Ho Chi Minh Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "FTS", name: "FPT Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "AGR", name: "Agribank Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "BVS", name: "Bao Viet Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "MBS", name: "MB Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "TVS", name: "TVS Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "WSS", name: "WSS Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "BSC", name: "Bao Son Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VDS", name: "Viet Dragon Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "EVS", name: "EIV Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VNS", name: "Vietnam Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "HBS", name: "Hoang Gia Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "IVS", name: "IVS Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "PSI", name: "PetroVietnam Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VCI", name: "Viet Capital Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VND", name: "VNDirect Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "BSI", name: "BIDV Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "VIX", name: "VIX Securities", exchange: "HNX", market: "HNX" },
+      { symbol: "SHS", name: "Saigon-Hanoi Securities", exchange: "HNX", market: "HNX" },
+      // UPCOM - Unlisted Public Company Market
+      { symbol: "VGI", name: "Vingroup", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VRE", name: "Vincom Retail", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VHM", name: "Vinhomes", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VIC", name: "Vingroup", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VNM", name: "Vinamilk", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VCB", name: "Vietcombank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VJC", name: "VietJet Air", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "FPT", name: "FPT Corporation", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "TCB", name: "Techcombank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "CTG", name: "VietinBank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "BID", name: "BIDV", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "MWG", name: "Mobile World", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "SSI", name: "SSI Securities", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "PLX", name: "Petrolimex", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "GAS", name: "PetroVietnam Gas", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "POW", name: "PetroVietnam Power", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "BVH", name: "Bao Viet Holdings", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "MBB", name: "MB Bank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "ACB", name: "ACB Bank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "TPB", name: "TPBank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "STB", name: "Sacombank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "VPB", name: "VPBank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "EIB", name: "Eximbank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "HDB", name: "HDBank", exchange: "UPCOM", market: "UPCOM" },
+      { symbol: "SHB", name: "SHB", exchange: "UPCOM", market: "UPCOM" },
+    ];
+  }
+
+  private isHOSEStock(symbol: string): boolean {
+    // HOSE stocks typically have 3 characters
+    return symbol.length === 3 && /^[A-Z]{3}$/.test(symbol);
+  }
+
+  private isHNXStock(symbol: string): boolean {
+    // HNX stocks typically have 3 characters
+    return symbol.length === 3 && /^[A-Z]{3}$/.test(symbol);
+  }
+
+  private isUPCOMStock(symbol: string): boolean {
+    // UPCOM stocks can have 3-5 characters
+    return symbol.length >= 3 && symbol.length <= 5 && /^[A-Z0-9]+$/.test(symbol);
   }
 
   private getEndpointsForProvider(
