@@ -42,6 +42,8 @@ npm install
 
 ### Cấu hình với đường dẫn local (sau khi clone)
 
+**Cấu hình cơ bản (không có Firecrawl API):**
+
 ```json
 {
   "mcpServers": {
@@ -50,6 +52,24 @@ npm install
       "args": [
         "C:\\path\\to\\vn-stock-api-mcp\\dist\\index.js"
       ]
+    }
+  }
+}
+```
+
+**Cấu hình đầy đủ (có Firecrawl API để sử dụng tính năng get_cafef_market_news):**
+
+```json
+{
+  "mcpServers": {
+    "vn-stock-api-mcp": {
+      "command": "node",
+      "args": [
+        "C:\\path\\to\\vn-stock-api-mcp\\dist\\index.js"
+      ],
+      "env": {
+        "FIRECRAWL_API_KEY": "your-firecrawl-api-key-here"
+      }
     }
   }
 }
@@ -64,13 +84,19 @@ npm install
       "command": "node",
       "args": [
         "~/vn-stock-api-mcp/dist/index.js"
-      ]
+      ],
+      "env": {
+        "FIRECRAWL_API_KEY": "your-firecrawl-api-key-here"
+      }
     }
   }
 }
 ```
 
-**Lưu ý:** Thay `C:\\path\\to\\vn-stock-api-mcp` hoặc `~/vn-stock-api-mcp` bằng đường dẫn thực tế đến thư mục bạn đã clone.
+**Lưu ý:** 
+- Thay `C:\\path\\to\\vn-stock-api-mcp` hoặc `~/vn-stock-api-mcp` bằng đường dẫn thực tế đến thư mục bạn đã clone.
+- Thay `"your-firecrawl-api-key-here"` bằng API key thực tế của bạn từ [firecrawl.dev](https://firecrawl.dev) (chỉ cần nếu muốn sử dụng tính năng `get_cafef_market_news`).
+- Nếu không có Firecrawl API key, các tool khác vẫn hoạt động bình thường, chỉ có `get_cafef_market_news` sẽ sử dụng phương pháp fallback.
 
 ## Tools có sẵn
 
@@ -201,11 +227,20 @@ Tìm kiếm tin tức về ngân hàng:
 
 **Lưu ý:**
 - Tool sử dụng Firecrawl API để scrape dữ liệu từ [cafef.vn](https://cafef.vn/thi-truong-chung-khoan.chn).
-- Để sử dụng Firecrawl API, cần set environment variable `FIRECRAWL_API_KEY` trong mcp.json hoặc system environment.
-- Nếu không có Firecrawl API key, tool sẽ sử dụng phương pháp fallback với HTML parsing cơ bản.
-- Để có kết quả tốt nhất, nên sử dụng Firecrawl API key từ [firecrawl.dev](https://firecrawl.dev).
+- Để sử dụng Firecrawl API, **bạn cần tự đăng ký và lấy API key của riêng bạn** từ [firecrawl.dev](https://firecrawl.dev).
+- Nếu không có Firecrawl API key, tool sẽ sử dụng phương pháp fallback với HTML parsing cơ bản (kết quả có thể kém chính xác hơn).
+- Để có kết quả tốt nhất, nên sử dụng Firecrawl API key của bạn.
+
+**Cách lấy Firecrawl API Key:**
+
+1. Truy cập [https://firecrawl.dev](https://firecrawl.dev)
+2. Đăng ký tài khoản miễn phí hoặc đăng nhập
+3. Vào Dashboard và lấy API key của bạn
+4. Copy API key và thêm vào cấu hình mcp.json như hướng dẫn bên dưới
 
 **Cấu hình Firecrawl API Key trong mcp.json:**
+
+Thêm `env` với `FIRECRAWL_API_KEY` vào cấu hình của `vn-stock-api-mcp`:
 
 ```json
 {
@@ -220,6 +255,11 @@ Tìm kiếm tin tức về ngân hàng:
   }
 }
 ```
+
+**⚠️ QUAN TRỌNG:** 
+- Thay `"your-firecrawl-api-key-here"` bằng API key thực tế của bạn từ firecrawl.dev
+- **KHÔNG** chia sẻ API key của bạn công khai
+- **KHÔNG** commit API key vào Git repository
 
 ## Các nhà cung cấp được hỗ trợ
 
